@@ -123,6 +123,28 @@
     font-family:'Mulish',sans-serif;
   }
 
+  /* ===== Multi-select (fornecedor) ===== */
+  .ms{position:relative;}
+  .ms-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px;}
+  .ms-chip{
+    background:rgba(0,58,93,.08);color:var(--navy);padding:3px 8px 3px 10px;border-radius:14px;
+    font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;gap:5px;max-width:100%;
+  }
+  .ms-chip .chip-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;}
+  .ms-chip .chip-x{cursor:pointer;font-weight:900;opacity:.55;font-size:13px;line-height:1;}
+  .ms-input{
+    border:1.5px solid var(--line);border-radius:8px;padding:9px 10px;font-family:'Mulish',sans-serif;
+    font-size:13px;font-weight:600;color:var(--ink);background:#fff;width:100%;
+  }
+  .ms-dropdown{
+    position:absolute;z-index:80;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--line);
+    border-radius:8px;max-height:220px;overflow-y:auto;box-shadow:var(--shadow);margin-top:3px;
+  }
+  .ms-option{padding:9px 12px;font-size:12.5px;cursor:pointer;color:var(--ink);}
+  .ms-option:hover{background:#F0F4F7;}
+  .ms-option.selected{background:rgba(0,58,93,.07);font-weight:700;color:var(--navy);}
+  .ms-empty{padding:9px 12px;font-size:11px;color:var(--ink-soft);}
+
   /* ===== Panels / charts ===== */
   .panel{
     background:var(--panel);border-radius:12px;padding:14px 14px 10px;box-shadow:var(--shadow);margin-bottom:12px;
@@ -256,8 +278,12 @@
       <select id="fFilialExec"><option value="">Todas as filiais</option></select>
     </div>
     <div class="fgroup">
-      <label for="fFornecedorExec">Fornecedor</label>
-      <select id="fFornecedorExec"><option value="">Todos os fornecedores</option></select>
+      <label>Fornecedor</label>
+      <div class="ms" id="msFornecedorExec">
+        <div class="ms-chips" id="msFornecedorExecChips"></div>
+        <input type="text" class="ms-input" id="msFornecedorExecInput" placeholder="Buscar fornecedor..." autocomplete="off">
+        <div class="ms-dropdown hidden" id="msFornecedorExecDropdown"></div>
+      </div>
     </div>
     <div class="fgroup">
       <label for="fCompradorExec">Comprador</label>
@@ -323,8 +349,12 @@
       <select id="fFilialOper"><option value="">Todas as filiais</option></select>
     </div>
     <div class="fgroup">
-      <label for="fFornecedorOper">Fornecedor</label>
-      <select id="fFornecedorOper"><option value="">Todos os fornecedores</option></select>
+      <label>Fornecedor</label>
+      <div class="ms" id="msFornecedorOper">
+        <div class="ms-chips" id="msFornecedorOperChips"></div>
+        <input type="text" class="ms-input" id="msFornecedorOperInput" placeholder="Buscar fornecedor..." autocomplete="off">
+        <div class="ms-dropdown hidden" id="msFornecedorOperDropdown"></div>
+      </div>
     </div>
     <div class="fgroup">
       <label for="fCompradorOper">Comprador</label>
@@ -419,8 +449,12 @@
       <select id="fFilialCmp"><option value="">Todas as filiais</option></select>
     </div>
     <div class="fgroup">
-      <label for="fFornecedorCmp">Fornecedor</label>
-      <select id="fFornecedorCmp"><option value="">Todos os fornecedores</option></select>
+      <label>Fornecedor</label>
+      <div class="ms" id="msFornecedorCmp">
+        <div class="ms-chips" id="msFornecedorCmpChips"></div>
+        <input type="text" class="ms-input" id="msFornecedorCmpInput" placeholder="Buscar fornecedor..." autocomplete="off">
+        <div class="ms-dropdown hidden" id="msFornecedorCmpDropdown"></div>
+      </div>
     </div>
     <div class="fgroup">
       <label for="fCompradorCmp">Comprador</label>
@@ -511,7 +545,6 @@ window.addEventListener('error', function(e){
     fillSelect('fComprador'+suffix, compradores);
     fillSelect('fTipoCompra'+suffix, tiposCompra);
     fillSelect('fTipo'+suffix, tipos);
-    fillSelect('fFornecedor'+suffix, fornecedores);
     document.getElementById('fPeriodoIni'+suffix).value = yms[0];
     document.getElementById('fPeriodoFim'+suffix).value = yms[yms.length-1];
   });
@@ -532,8 +565,71 @@ window.addEventListener('error', function(e){
   function destroyCharts(){ Object.values(charts).forEach(c=>c && c.destroy()); charts = {}; }
   function safe(fn, label){ try{ fn(); }catch(e){ console.error('Erro em '+label+':', e); } }
 
+  const msFornecedorExec = createMultiSelect('Exec','Fornecedor', fornecedores, ()=>{ destroyCharts(); renderExecutivo(); renderOperacao(); });
+  const msFornecedorOper = createMultiSelect('Oper','Fornecedor', fornecedores, ()=>{ page=1; destroyCharts(); renderExecutivo(); renderOperacao(); });
+  const msFornecedorCmp = createMultiSelect('Cmp','Fornecedor', fornecedores, ()=>{ renderComparativo(); });
+
   function isRegularizacao(d){ return d.tipo_compra.toLowerCase() === 'regularização nota fiscal'; }
   function isEmergencial(d){ return d.tipo_compra.toLowerCase() === 'compras emergenciais'; }
+
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+  // ---- Searchable multi-select widget (fornecedor) ----
+  function createMultiSelect(suffix, key, allOptions, onChange){
+    const root = document.getElementById('ms'+key+suffix);
+    const input = document.getElementById('ms'+key+suffix+'Input');
+    const chipsEl = document.getElementById('ms'+key+suffix+'Chips');
+    const dropdownEl = document.getElementById('ms'+key+suffix+'Dropdown');
+    let selected = [];
+
+    function renderChips(){
+      chipsEl.innerHTML = selected.map(v=>`<span class="ms-chip"><span class="chip-label">${esc(v)}</span><span class="chip-x" data-v="${esc(v)}">×</span></span>`).join('');
+      chipsEl.querySelectorAll('.chip-x').forEach(x=>{
+        x.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          const v = x.getAttribute('data-v');
+          selected = selected.filter(s=>s!==v);
+          renderChips();
+          onChange();
+        });
+      });
+    }
+
+    function renderDropdown(query){
+      const q = query.trim().toLowerCase();
+      let options = q ? allOptions.filter(o=>o.toLowerCase().includes(q)) : allOptions;
+      const shown = options.slice(0,80);
+      if(shown.length===0){
+        dropdownEl.innerHTML = '<div class="ms-empty">Nenhum fornecedor encontrado</div>';
+      } else {
+        dropdownEl.innerHTML = shown.map(o=>`<div class="ms-option ${selected.includes(o)?'selected':''}" data-v="${esc(o)}">${esc(o)}</div>`).join('')
+          + (options.length>80 ? `<div class="ms-empty">+${options.length-80} outros — refine a busca</div>` : '');
+        dropdownEl.querySelectorAll('.ms-option').forEach(opt=>{
+          opt.addEventListener('click', ()=>{
+            const v = opt.getAttribute('data-v');
+            if(selected.includes(v)){ selected = selected.filter(s=>s!==v); }
+            else { selected.push(v); }
+            input.value = '';
+            renderChips();
+            renderDropdown('');
+            onChange();
+          });
+        });
+      }
+      dropdownEl.classList.remove('hidden');
+    }
+
+    input.addEventListener('focus', ()=> renderDropdown(input.value));
+    input.addEventListener('input', ()=> renderDropdown(input.value));
+    document.addEventListener('click', (e)=>{ if(!root.contains(e.target)) dropdownEl.classList.add('hidden'); });
+
+    renderChips();
+
+    return {
+      getSelected: ()=> selected,
+      reset: ()=>{ selected=[]; input.value=''; renderChips(); dropdownEl.classList.add('hidden'); }
+    };
+  }
 
   function varSpan(cur, prev, direction, isPP){
     if(prev===0 || prev===null || prev===undefined){
@@ -647,14 +743,14 @@ window.addEventListener('error', function(e){
     const comprador = document.getElementById('fCompradorExec').value;
     const tipoCompra = document.getElementById('fTipoCompraExec').value;
     const tipo = document.getElementById('fTipoExec').value;
-    const fornecedor = document.getElementById('fFornecedorExec').value;
+    const fornecedorSel = msFornecedorExec.getSelected();
     return allData.filter(d=>{
       if(d.ym < pIni || d.ym > pFim) return false;
       if(filial && d.filial !== filial) return false;
       if(comprador && d.comprador !== comprador) return false;
       if(tipoCompra && d.tipo_compra !== tipoCompra) return false;
       if(tipo && d.tipo !== tipo) return false;
-      if(fornecedor && d.fornecedor !== fornecedor) return false;
+      if(fornecedorSel.length>0 && !fornecedorSel.includes(d.fornecedor)) return false;
       return true;
     });
   }
@@ -664,13 +760,13 @@ window.addEventListener('error', function(e){
     const comprador = document.getElementById('fCompradorExec').value;
     const tipoCompra = document.getElementById('fTipoCompraExec').value;
     const tipo = document.getElementById('fTipoExec').value;
-    const fornecedor = document.getElementById('fFornecedorExec').value;
+    const fornecedorSel = msFornecedorExec.getSelected();
     return allData.filter(d=>{
       if(filial && d.filial !== filial) return false;
       if(comprador && d.comprador !== comprador) return false;
       if(tipoCompra && d.tipo_compra !== tipoCompra) return false;
       if(tipo && d.tipo !== tipo) return false;
-      if(fornecedor && d.fornecedor !== fornecedor) return false;
+      if(fornecedorSel.length>0 && !fornecedorSel.includes(d.fornecedor)) return false;
       return true;
     });
   }
@@ -837,13 +933,13 @@ window.addEventListener('error', function(e){
     const comprador = document.getElementById('fCompradorCmp').value;
     const tipoCompra = document.getElementById('fTipoCompraCmp').value;
     const tipo = document.getElementById('fTipoCmp').value;
-    const fornecedor = document.getElementById('fFornecedorCmp').value;
+    const fornecedorSel = msFornecedorCmp.getSelected();
     return allData.filter(d=>{
       if(filial && d.filial !== filial) return false;
       if(comprador && d.comprador !== comprador) return false;
       if(tipoCompra && d.tipo_compra !== tipoCompra) return false;
       if(tipo && d.tipo !== tipo) return false;
-      if(fornecedor && d.fornecedor !== fornecedor) return false;
+      if(fornecedorSel.length>0 && !fornecedorSel.includes(d.fornecedor)) return false;
       return true;
     });
   }
@@ -924,7 +1020,7 @@ window.addEventListener('error', function(e){
     const comprador = document.getElementById('fCompradorOper').value;
     const tipoCompra = document.getElementById('fTipoCompraOper').value;
     const tipo = document.getElementById('fTipoOper').value;
-    const fornecedor = document.getElementById('fFornecedorOper').value;
+    const fornecedorSel = msFornecedorOper.getSelected();
     const q = document.getElementById('searchInput').value.trim().toLowerCase();
     return allData.filter(d=>{
       if(d.ym < pIni || d.ym > pFim) return false;
@@ -932,7 +1028,7 @@ window.addEventListener('error', function(e){
       if(comprador && d.comprador !== comprador) return false;
       if(tipoCompra && d.tipo_compra !== tipoCompra) return false;
       if(tipo && d.tipo !== tipo) return false;
-      if(fornecedor && d.fornecedor !== fornecedor) return false;
+      if(fornecedorSel.length>0 && !fornecedorSel.includes(d.fornecedor)) return false;
       if(q){
         const hay = (d.fornecedor+' '+d.filial+' '+d.grupo+' '+d.comprador).toLowerCase();
         if(!hay.includes(q)) return false;
@@ -946,13 +1042,13 @@ window.addEventListener('error', function(e){
     const comprador = document.getElementById('fCompradorOper').value;
     const tipoCompra = document.getElementById('fTipoCompraOper').value;
     const tipo = document.getElementById('fTipoOper').value;
-    const fornecedor = document.getElementById('fFornecedorOper').value;
+    const fornecedorSel = msFornecedorOper.getSelected();
     return allData.filter(d=>{
       if(filial && d.filial !== filial) return false;
       if(comprador && d.comprador !== comprador) return false;
       if(tipoCompra && d.tipo_compra !== tipoCompra) return false;
       if(tipo && d.tipo !== tipo) return false;
-      if(fornecedor && d.fornecedor !== fornecedor) return false;
+      if(fornecedorSel.length>0 && !fornecedorSel.includes(d.fornecedor)) return false;
       return true;
     });
   }
@@ -1207,7 +1303,7 @@ window.addEventListener('error', function(e){
   }
 
   // ---- Event bindings: Executivo ----
-  ['fPeriodoIniExec','fPeriodoFimExec','fFilialExec','fCompradorExec','fTipoCompraExec','fTipoExec','fFornecedorExec'].forEach(id=>{
+  ['fPeriodoIniExec','fPeriodoFimExec','fFilialExec','fCompradorExec','fTipoCompraExec','fTipoExec'].forEach(id=>{
     document.getElementById(id).addEventListener('change', ()=>{ destroyCharts(); renderExecutivo(); renderOperacao(); });
   });
   document.getElementById('btnResetExec').addEventListener('click', ()=>{
@@ -1217,12 +1313,12 @@ window.addEventListener('error', function(e){
     document.getElementById('fCompradorExec').value = '';
     document.getElementById('fTipoCompraExec').value = '';
     document.getElementById('fTipoExec').value = '';
-    document.getElementById('fFornecedorExec').value = '';
+    msFornecedorExec.reset();
     destroyCharts(); renderExecutivo(); renderOperacao();
   });
 
   // ---- Event bindings: Operação ----
-  ['fPeriodoIniOper','fPeriodoFimOper','fFilialOper','fCompradorOper','fTipoCompraOper','fTipoOper','fFornecedorOper'].forEach(id=>{
+  ['fPeriodoIniOper','fPeriodoFimOper','fFilialOper','fCompradorOper','fTipoCompraOper','fTipoOper'].forEach(id=>{
     document.getElementById(id).addEventListener('change', ()=>{ page=1; destroyCharts(); renderExecutivo(); renderOperacao(); });
   });
   document.getElementById('searchInput').addEventListener('input', ()=>{ page=1; renderBuyCards(getFilteredOper()); });
@@ -1235,7 +1331,7 @@ window.addEventListener('error', function(e){
     document.getElementById('fCompradorOper').value = '';
     document.getElementById('fTipoCompraOper').value = '';
     document.getElementById('fTipoOper').value = '';
-    document.getElementById('fFornecedorOper').value = '';
+    msFornecedorOper.reset();
     document.getElementById('searchInput').value = '';
     page=1; destroyCharts(); renderExecutivo(); renderOperacao();
   });
@@ -1244,7 +1340,7 @@ window.addEventListener('error', function(e){
   document.getElementById('btnExportXlsx').addEventListener('click', ()=>{ safe(exportTableXlsx, 'exportação XLSX'); });
 
   // ---- Event bindings: Comparativo ----
-  ['fPeriodoIniCmp','fPeriodoFimCmp','fFilialCmp','fCompradorCmp','fTipoCompraCmp','fTipoCmp','fFornecedorCmp'].forEach(id=>{
+  ['fPeriodoIniCmp','fPeriodoFimCmp','fFilialCmp','fCompradorCmp','fTipoCompraCmp','fTipoCmp'].forEach(id=>{
     document.getElementById(id).addEventListener('change', ()=>{ renderComparativo(); });
   });
   document.getElementById('btnResetCmp').addEventListener('click', ()=>{
@@ -1254,7 +1350,7 @@ window.addEventListener('error', function(e){
     document.getElementById('fCompradorCmp').value = '';
     document.getElementById('fTipoCompraCmp').value = '';
     document.getElementById('fTipoCmp').value = '';
-    document.getElementById('fFornecedorCmp').value = '';
+    msFornecedorCmp.reset();
     renderComparativo();
   });
 
